@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.fiap.ford_vinshare.FordVinShareApplicationTests
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.318 s -- in com.fiap.ford_vinshare.FordVinShareApplicationTests
