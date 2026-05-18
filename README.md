@@ -32,7 +32,7 @@ Camadas principais:
 - `controller`: contrato REST e status HTTP.
 - `service`: regras de negocio, VIN Share e geracao de leads.
 - `repository`: acesso a dados com Spring Data JPA.
-- `domain`: entidades JPA e enums do negocio.
+- `model`: entidades JPA e enums do negocio.
 - `dto`: objetos de transferencia da API em pacote unico, sem subpastas por modulo.
 - `validation`: validacao customizada de VIN.
 - `security`: login, JWT e filtro de autenticacao.
