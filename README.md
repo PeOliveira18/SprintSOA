@@ -3,7 +3,7 @@
 API RESTful em Java + Spring Boot para o Desafio 02 da Ford FIAP 2026:
 **impulsionar o VIN Share na America do Sul com solucoes inteligentes para pos-venda**.
 
-O projeto foi pensado para a sprint de **Arquitetura Orientada a Servicos e Web Services**. Ele entrega uma API modular, com login, validacao de entradas, banco Oracle, migrations com Flyway, Swagger, Lombok e separacao clara entre controllers, services, repositories, domain e DTOs.
+O projeto entrega uma API modular, com login, validacao de entradas, banco Oracle, migrations com Flyway, Swagger, Lombok e separacao clara entre controllers, services, repositories, domain e DTOs.
 
 ## Problema Atendido
 
