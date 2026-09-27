@@ -283,3 +283,11 @@ Os testes rodam contra um banco H2 em memoria (perfil de teste, populado pelas m
 - **`JwtServiceTest`** — geracao e validacao de token, token de outro usuario, token expirado, assinatura adulterada e assinatura com segredo diferente — todos invalidados corretamente.
 - **`ConcessionariaControllerTest`** e **`VeiculoControllerTest`** — fluxo CRUD via API real (autenticada com JWT obtido no login): criacao com sucesso (`201` + `Location`), violacao de regra de negocio/duplicidade (`409`), validacao de campos (`400`) e recurso inexistente (`404`).
 - **`VinValidatorTest`** — validacao customizada de VIN (formato, tamanho, caracteres proibidos).
+
+## Integrantes
+
+| Nome | RM |
+| --- | --- |
+| Pedro Oliveira | 99943 |
+| Debora Ivanowski | 555694 |
+| Diego Cabral | 557817 |
