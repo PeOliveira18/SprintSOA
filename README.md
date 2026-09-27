@@ -16,15 +16,36 @@ O VIN Share representa a porcentagem de veiculos Ford que usam a rede oficial pa
 
 ## Arquitetura
 
+### Componentes e responsabilidades
+
 ```mermaid
 flowchart LR
-    A["App Mobile / Dashboard / Insomnia"] --> B["Controllers REST"]
-    B --> C["Services"]
-    C --> D["Repositories JPA"]
-    D --> E["H2 Database"]
-    F["Auth JWT Filter"] --> B
-    G["Flyway Migrations"] --> E
-    H["Swagger OpenAPI"] --> B
+    Client["Cliente (App Mobile / Dashboard / Insomnia / Swagger UI)"]
+
+    subgraph API["Ford VIN Share API (Spring Boot)"]
+        Filter["JwtAuthenticationFilter\n(le o Bearer token, popula o SecurityContext)"]
+        SecConfig["SecurityConfig\n(autorizacao por role, entrypoints de erro)"]
+        Controller["Controllers REST\n(contrato HTTP, status codes)"]
+        Service["Services\n(regras de negocio, VIN Share, leads)"]
+        Repository["Repositories JPA\n(Spring Data)"]
+        ExHandler["GlobalExceptionHandler\n(padroniza erros em ApiError)"]
+    end
+
+    DB[("Banco de dados\nOracle (prod) / H2 (testes)")]
+    Flyway["Flyway Migrations"]
+    Swagger["springdoc / Swagger UI"]
+
+    Client -- "1. POST /api/auth/login" --> Controller
+    Client -- "2. requisicoes com\nAuthorization: Bearer <token>" --> Filter
+    Filter --> SecConfig
+    SecConfig --> Controller
+    Controller --> Service
+    Service --> Repository
+    Repository --> DB
+    Flyway --> DB
+    Controller -.erro.-> ExHandler
+    SecConfig -.erro 401/403.-> ExHandler
+    Swagger --> Controller
 ```
 
 Camadas principais:
@@ -35,8 +56,54 @@ Camadas principais:
 - `model`: entidades JPA e enums do negocio.
 - `dto`: objetos de transferencia da API em pacote unico, sem subpastas por modulo.
 - `validation`: validacao customizada de VIN.
-- `security`: login, JWT e filtro de autenticacao.
-- `exception`: padrao unico de erros JSON.
+- `security`: login, geracao/validacao de JWT, filtro de autenticacao e handlers de erro (401/403).
+- `exception`: padrao unico de erros JSON (`ApiError`), inclusive para os erros gerados pelo Spring Security.
+- `config`: `SecurityConfig` (regras de autorizacao, usuarios, encoder de senha) e `OpenApiConfig` (Swagger/JWT bearer).
+
+### Fluxo de comunicacao e autenticacao
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant A as AuthController
+    participant AM as AuthenticationManager
+    participant J as JwtService
+    participant F as JwtAuthenticationFilter
+    participant R as Controller protegido
+
+    C->>A: POST /api/auth/login {username, password}
+    A->>AM: authenticate(username, password)
+    AM-->>A: Authentication (roles do usuario)
+    A->>J: generateToken(userDetails)
+    J-->>A: JWT assinado (HMAC-SHA256, exp em 120min)
+    A-->>C: 200 {accessToken, tokenType, expiresAt, roles}
+
+    C->>F: GET/POST /api/** + Authorization: Bearer <token>
+    F->>J: isTokenValid(token, userDetails)
+    alt token ausente/invalido/expirado
+        F-->>C: 401 Unauthorized (RestAuthenticationEntryPoint)
+    else token valido, mas role sem permissao para a operacao
+        F-->>C: 403 Forbidden (RestAccessDeniedHandler)
+    else token valido e role autorizada
+        F->>R: encaminha requisicao autenticada
+        R-->>C: 200/201/204 (dados ou confirmacao)
+    end
+```
+
+- **Endpoints publicos**: `/api/auth/login`, Swagger (`/swagger-ui/**`, `/v3/api-docs/**`) e `/h2-console/**` (apenas em teste local).
+- **Endpoints protegidos**: todo o restante de `/api/**` exige `Authorization: Bearer <token>` valido.
+- Token JWT sem estado de sessao (`STATELESS`) — cada requisicao e validada isoladamente pelo `JwtAuthenticationFilter`.
+
+### Matriz de autorizacao (perfis)
+
+| Perfil | Usuario de teste | `GET /api/**` | `POST/PUT/PATCH/DELETE /api/**` |
+|---|---|---|---|
+| `ROLE_ADMIN` | `admin` / `admin123` | Permitido | Permitido |
+| `ROLE_ANALISTA` | `analista` / `fiap123` | Permitido | Permitido |
+| `ROLE_CONCESSIONARIA` | `dealer` / `dealer123` | Permitido (somente leitura) | Bloqueado (`403 Forbidden`) |
+| Sem token / token invalido | - | `401 Unauthorized` | `401 Unauthorized` |
+
+Regras definidas em `SecurityConfig` e cobertas por `SecurityAccessControlTest`.
 
 ## Como Rodar
 
@@ -188,7 +255,7 @@ curl http://localhost:8080/api/dashboard/vin-share \
 - Datas de compra e servico nao podem estar no futuro.
 - Previsao de contato do lead precisa ser hoje ou futura.
 - Quilometragem e valores nao podem ser negativos.
-- Erros padronizados em JSON.
+- Erros padronizados em JSON (`ApiError`: timestamp, status, error, message, path, fields), inclusive para `401` (`RestAuthenticationEntryPoint`) e `403` (`RestAccessDeniedHandler`) levantados pelo Spring Security antes de chegar ao controller.
 
 ## Criterios da Sprint Cobertos
 
@@ -207,4 +274,12 @@ curl http://localhost:8080/api/dashboard/vin-share \
 mvn test
 ```
 
-Resultado atual: `4 tests`, `0 failures`, `0 errors`.
+Resultado atual: `29 tests`, `0 failures`, `0 errors` (relatorios em `target/surefire-reports/`).
+
+Os testes rodam contra um banco H2 em memoria (perfil de teste, populado pelas mesmas migrations Flyway usadas em producao) e cobrem:
+
+- **`AuthControllerTest`** — login com sucesso (gera JWT), senha invalida (`401`), usuario inexistente (`401`) e payload invalido (`400`).
+- **`SecurityAccessControlTest`** — endpoint protegido sem token (`401`), com token invalido (`401`), endpoint publico de login, e a matriz de perfis (`CONCESSIONARIA` so le, `ANALISTA`/`ADMIN` podem escrever, escrita negada retorna `403`).
+- **`JwtServiceTest`** — geracao e validacao de token, token de outro usuario, token expirado, assinatura adulterada e assinatura com segredo diferente — todos invalidados corretamente.
+- **`ConcessionariaControllerTest`** e **`VeiculoControllerTest`** — fluxo CRUD via API real (autenticada com JWT obtido no login): criacao com sucesso (`201` + `Location`), violacao de regra de negocio/duplicidade (`409`), validacao de campos (`400`) e recurso inexistente (`404`).
+- **`VinValidatorTest`** — validacao customizada de VIN (formato, tamanho, caracteres proibidos).
